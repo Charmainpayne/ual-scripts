@@ -10,7 +10,7 @@ set -euo pipefail
 #   CONFIG_DIR       - Path to .config (for starship, etc.)
 ###############################################################################
 
-SOURCE_DOTFILES="$HOME/github/ual-scripts"
+SOURCE_DOTFILES="$HOME/github/macos/ual-scripts"
 DEST_HOME="$HOME"
 CONFIG_DIR="$DEST_HOME/.config"
 
