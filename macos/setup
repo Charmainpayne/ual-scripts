@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+###############################################################################
+# PATH VARIABLES: Edit these at the top of the script for easy future changes.
+#
+#   SOURCE_DOTFILES  - Path to your dotfiles/config repo
+#   DEST_HOME        - Target user home directory
+#   CONFIG_DIR       - Path to .config (for starship, etc.)
+###############################################################################
+
+SOURCE_DOTFILES="$HOME/github/ual-scripts"
+DEST_HOME="$HOME"
+CONFIG_DIR="$DEST_HOME/.config"
+
+###############################################################################
+# COLOR VARIABLES
+###############################################################################
+
+boldPurple="\033[1;35m"
+boldGreen="\033[1;32m"
+boldRed="\033[1;31m"
+noColor="\033[0m"
+
+###############################################################################
+# APP LIST
+###############################################################################
+
+CASK_APPS=(
+  raindropio
+  raycast
+  arc
+  alt-tab
+  rocket
+  brave-browser
+  google-drive
+  app-cleaner
+  visual-studio-code
+  warp
+  whatsapp
+  textexpander
+)
+
+###############################################################################
+# HELPER FUNCTIONS
+###############################################################################
+
+function status()   { echo -e "${boldPurple}>>> $1${noColor}"; }
+function success()  { echo -e "${boldGreen}$1${noColor}"; }
+function error()    { echo -e "${boldRed}$1${noColor}"; }
+
+###############################################################################
+# 1. INSTALL APPS VIA HOMEBREW
+###############################################################################
+
+echo
+echo "########################################################################"
+echo "Homebrew Cask App Installer"
+echo "########################################################################"
+
+# Prompt for sudo upfront
+sudo -v
+
+# Check for Homebrew
+if ! command -v brew >/dev/null 2>&1; then
+  error "Homebrew is not installed. Please install Homebrew first: https://brew.sh/"
+  exit 1
+fi
+
+# Make sure Homebrew is up to date
+status "Updating Homebrew..."
+brew update
+
+# Track results
+declare -a INSTALLED_APPS
+declare -a SKIPPED_APPS
+declare -a FAILED_APPS
+
+for app in "${CASK_APPS[@]}"; do
+  status "Installing $app..."
+
+  # Check if already installed
+  if brew list --cask "$app" >/dev/null 2>&1; then
+    success "$app is already installed. Skipping."
+    SKIPPED_APPS+=("$app")
+    continue
+  fi
+
+  # Try to install
+  if brew install --cask "$app"; then
+    success "$app installed successfully."
+    INSTALLED_APPS+=("$app")
+  else
+    error "Failed to install $app."
+    FAILED_APPS+=("$app")
+  fi
+done
+
+echo
+echo "########################################################################"
+echo -e "${boldGreen}Installation summary:${noColor}"
+
+if [ "${#INSTALLED_APPS[@]}" -gt 0 ]; then
+  echo -e "${boldGreen}Installed:${noColor} ${INSTALLED_APPS[*]}"
+fi
+
+if [ "${#SKIPPED_APPS[@]}" -gt 0 ]; then
+  echo -e "${boldPurple}Already installed:${noColor} ${SKIPPED_APPS[*]}"
+fi
+
+if [ "${#FAILED_APPS[@]}" -gt 0 ]; then
+  echo -e "${boldRed}Failed:${noColor} ${FAILED_APPS[*]}"
+  error "Some apps failed to install. Please check the output above."
+else
+  success "All apps installed or already present!"
+fi
+
+###############################################################################
+# 2. APPLY MACOS DEFAULTS (UI/UX TWEAKS)
+###############################################################################
+
+echo
+echo "########################################################################"
+echo "Applying macOS UI/UX Tweaks"
+echo "########################################################################"
+
+# -----------------------------------------------------------------------------
+# Dock Settings
+# -----------------------------------------------------------------------------
+
+status "Automatically hiding the Dock"
+defaults write com.apple.dock autohide -bool true && killall Dock
+
+status "Disabling 'Recents' in Dock"
+defaults write com.apple.dock show-recents -bool false && killall Dock
+
+# -----------------------------------------------------------------------------
+# Menu Bar
+# -----------------------------------------------------------------------------
+
+status "Automatically hiding the menu bar"
+defaults write NSGlobalDomain _HIHideMenuBar -bool true && killall SystemUIServer
+
+# -----------------------------------------------------------------------------
+# Finder Settings
+# -----------------------------------------------------------------------------
+
+status "Showing Finder path bar"
+defaults write com.apple.finder ShowPathbar -bool true
+
+status "Showing file extensions"
+defaults write NSGlobalDomain AppleShowAllExtensions -bool true && killall Finder
+
+status "Showing hidden files in Finder"
+defaults write com.apple.finder AppleShowAllFiles -bool true && killall Finder
+
+status "Keeping folders on top in Finder"
+defaults write com.apple.finder _FXSortFoldersFirst -bool true && killall Finder
+
+# Change current search scope on Finder
+# Possible values:
+#   SCcf - Search "This Mac" (default)
+#   SCev - Search "Current Folder"
+#   SCsp - Search "Previous Scope" (remembers last used)
+# To change to "This Mac" instead of "Current Folder", use:
+# defaults write com.apple.finder FXDefaultSearchScope -string "SCcf" && killall Finder
+status "Setting Finder search to 'Current Folder' (change to 'This Mac' by setting 'SCcf')"
+defaults write com.apple.finder FXDefaultSearchScope -string "SCcf" && killall Finder
+
+status "Setting Finder default view to 'List'"
+defaults write com.apple.finder FXPreferredViewStyle -string "Nlsv" && killall Finder
+
+# -----------------------------------------------------------------------------
+# Desktop Settings
+# -----------------------------------------------------------------------------
+
+status "Showing hard drives on Desktop"
+defaults write com.apple.finder ShowHardDrivesOnDesktop -bool true && killall Finder
+
+status "Showing external hard drives on Desktop"
+defaults write com.apple.finder ShowExternalHardDrivesOnDesktop -bool true && killall Finder
+
+status "Showing servers on Desktop"
+defaults write com.apple.finder ShowMountedServersOnDesktop -bool true && killall Finder
+
+status "Showing folders first on Desktop"
+defaults write com.apple.finder _FXSortFoldersFirstOnDesktop -bool true && killall Finder
+
+# -----------------------------------------------------------------------------
+# Spaces & Mission Control
+# -----------------------------------------------------------------------------
+
+status "Disabling automatic rearrangement of Spaces"
+defaults write com.apple.dock mru-spaces -bool false
+
+echo
+echo -e "${boldGreen}All macOS tweaks applied! Some changes may require you to log out or restart your Mac to take full effect.${noColor}"
+
+exit 0
