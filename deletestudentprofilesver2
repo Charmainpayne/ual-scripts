@@ -1,0 +1,166 @@
+#! /bin/bash
+
+# Checks that the script is being run as root
+currentuser=$(whoami)
+if [ $currentuser = root ]
+then
+    true
+else
+    echo "Please run this script as root/sudo."
+    exit 2
+fi
+
+# Shows who is logged in, and then prompts the user to continue.
+echo ----------------------------------
+echo "Below is a list of the users currently logged in:"
+echo ----------------------------------
+who | cut -d' ' -f1
+echo ----------------------------------
+sleep 1
+echo "This script only works correctly if you are the only person logged in. If you're not, please restart the Mac."
+echo "You must also be logged in as a member of a local admin group, a CA account, or as uadmin."
+echo "Are you ready to continue? (Y/N)"
+read input
+answer=$(echo $input | tr '[a-z]' '[A-Z]')
+case $answer in
+    "Y") true;;
+    "YES") true;;
+    "N") echo "Exiting script..."; exit 0;;
+    "NO") echo "Exiting script..."; exit 0;;
+    *) echo "Invalid response." ; exit 1;;
+esac
+
+# If the user adds a username as the first argument, the script will remove that username from searches, preventing it from being deleted.
+if [ -z $1 ]
+    then
+    placeholder=PLACEHOLDER
+    else
+    placeholder=$(echo $1)
+fi
+
+echo ----------------------------------
+echo "Deleting Student accounts from the Local Directory Service..."
+echo ----------------------------------
+
+students=$(dscl . -list /Users | grep -E '^[0-2]|^...1' | grep -v $placeholder)
+count=1
+total=$(echo $students| wc -w | cut -w -f2)
+
+for student in $students
+do
+echo "Deleting $count / $total $student"
+count=$(( $count + 1 ))
+dscl . -delete /Users/$student
+done
+
+count=1
+
+echo ----------------------------------
+echo "Deleting Student Home Folders..."
+echo ----------------------------------
+
+for student in $students
+do
+echo "Deleting $count / $total $student"
+count=$(( $count + 1 ))
+rm -rf /Users/$student 2> /dev/null
+rm -rf /Users/$student 2> /dev/null
+done
+
+# Obtain a list of staff users by checking the local open directory for accounts beginning with a-z, then removing the known service accounts that match. Once that list is made, check it against Active Directory to confirm the accounts are in the STAFF OU and aren't in the LA UAL Library Security Group. Once that is done, save to a new variable called $nonadminstafflist.
+# NOTE: I'm saving the output of the dscl Active Directory command to a variable, so I can minimise the amount of requests that need to be made directly to AD.
+
+staffusers=$(dscl . -list /Users | grep '^[a-z]' | grep -v -E 'uadmin|tadmin|sshadmin|nobody|root|daemon|recovery|^eset_|csm seminar' | grep -v $placeholder)
+for line in $staffusers
+do
+dscloutput=$(/usr/bin/dscl /Active\ Directory/ARTSLOCAL/arts.local -read /Users/$line 2> /dev/null)
+echo $dscloutput | grep 'OU=STAFF' &> /dev/null && echo $dscloutput | grep -v 'CN=LA' &> /dev/null
+if [ $? = 0 ]
+then
+    nonadminstafflist=$(echo $nonadminstafflist $line)
+fi
+done
+
+count=1
+total=$(echo $nonadminstafflist | wc -w | cut -w -f2)
+
+echo ----------------------------------
+echo "Deleting Non-Admin Staff accounts from the Local Directory Service..."
+echo ----------------------------------
+
+for staff in $nonadminstafflist
+do
+echo "Deleting $count / $total $staff"
+count=$(( $count + 1 ))
+dscl . -delete /Users/$staff
+done
+
+count=1
+
+echo ----------------------------------
+echo "Deleting Non-Admin Staff Home Folders..."
+echo ----------------------------------
+
+for staff in $nonadminstafflist
+do
+echo "Deleting $count / $total $staff"
+count=$(( $count + 1 ))
+rm -rf /Users/$staff 2> /dev/null
+rm -rf /Users/$staff 2> /dev/null
+done
+
+echo ----------------------------------
+
+home_dir=$(ls /Users | grep -E -v 'Shared|uadmin|.localized|Library')
+
+for line in $home_dir
+do
+dscl . -list /Users/$line &> /dev/null
+if [ $? = 0 ]
+then
+true
+else
+leftovers=$(echo $leftovers $line)
+fi
+done
+
+if [ -z "$leftovers" ]
+then
+    echo "Student and Non-Admin Staff Accounts successfully deleted."
+    exit 0
+else
+    true
+fi
+
+echo ----------------------------------
+echo "There are still orphaned home folders on the system."
+echo ----------------------------------
+echo $leftovers
+echo ----------------------------------
+echo "Do you want to delete these? (Y/N)"
+read input
+echo ----------------------------------
+answer=$(echo $input | tr '[a-z]' '[A-Z]')
+case $answer in
+    "Y") true;;
+    "YES") true;;
+    "N") echo "These will not be deleted. All other Student and Non-Admin Staff Accounts successfully deleted"; exit 0;;
+    "NO") echo "These will not be deleted. All other Student and Non-Admin Staff Accounts successfully deleted"; exit 0;;
+    *) echo "Invalid response." ; exit 1;;
+esac
+
+count=1
+total=$(echo $leftovers | wc -w | cut -w -f2)
+
+for leftover in $leftovers
+do
+    echo "Deleting $count / $total $leftover"
+    count=$(( $count + 1 ))
+    rm -rf /Users/$leftover 2> /dev/null
+    rm -rf /Users/$leftover 2> /dev/null
+done
+
+echo ----------------------------------
+echo "Student and Non-Admin Staff Accounts successfully deleted."
+echo ----------------------------------
+exit 0
